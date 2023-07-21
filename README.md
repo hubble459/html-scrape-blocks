@@ -1,0 +1,3 @@
+Condition:
+    Matcher<Type>
+    
