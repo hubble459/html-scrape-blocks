@@ -1,11 +1,13 @@
 use std::{any::Any, collections::HashMap, error::Error};
 
+use itertools::Itertools;
 use kuchiki::{
     iter::{Descendants, Elements, Select},
     traits::{ElementIterator, TendrilSink},
     NodeRef,
 };
-use serde::{Deserialize, Serialize};
+use regex::Regex;
+use serde::{de::value, Deserialize, Serialize};
 use util::kuchiki_elements::ElementsTrait;
 pub mod util;
 
@@ -40,7 +42,7 @@ fn main() {
             text_type: TextType::Own,
             clean_with_regex_1: None,
         },
-        matches_regex: "regex".to_string(),
+        matches_regex: Some("regex".to_string()),
         if_true: Box::new(Matcher::String {
             query: QueryMatcher {
                 selector: "h1.title".to_string(),
@@ -89,12 +91,12 @@ struct QueryMatcher {
 }
 
 impl QueryMatcher {
-    fn select<T: ElementIterator>(&self, node: T) -> Select<T> {
+    pub fn select<T: ElementIterator + Clone>(&self, node: T) -> Select<T> {
         node.select(self.selector.as_str()).expect("Invalid Regex")
     }
 
-    fn text<T: ElementIterator>(&self, node: T) -> String {
-        match self.text_type {
+    pub fn text<T: ElementIterator + Clone>(&self, node: T) -> String {
+        let text = match &self.text_type {
             TextType::Own => node.own_text(),
             TextType::All { join_str } => node.all_text(&join_str),
             TextType::Attribute {
@@ -104,9 +106,21 @@ impl QueryMatcher {
                 if let Some(join_str) = join_str {
                     node.attrs_first_of(attributes.as_slice()).join(&join_str)
                 } else {
-                    node.attr_first_of(attributes.as_slice()).unwrap_or_default()
+                    node.attr_first_of(attributes.as_slice())
+                        .unwrap_or_default()
                 }
-            },
+            }
+        };
+
+        if let Some(regex) = &self.clean_with_regex_1 {
+            let regex = Regex::new(regex).expect("Bad regex `clean_with_regex_1`");
+            if let Some(clean_text) = regex.find(&text) {
+                clean_text.as_str().to_string()
+            } else {
+                panic!("Regex did not match anything");
+            }
+        } else {
+            return text;
         }
     }
 }
@@ -138,7 +152,7 @@ enum Matcher {
     },
     Condition {
         query: QueryMatcher,
-        matches_regex: String,
+        matches_regex: Option<String>,
         if_true: Box<Matcher>,
         if_false: Option<Box<Matcher>>,
     },
@@ -146,10 +160,10 @@ enum Matcher {
 
 impl Matcher {
     pub fn exec(&self, node: Element) -> Box<dyn Any> {
-        match self {
+        return match self {
             Matcher::String { query } => {
                 let element = query.select(node);
-                query.text(element)
+                Box::new(query.text(element))
             }
             Matcher::Number { query } => todo!(),
             Matcher::URL { query } => todo!(),
@@ -171,9 +185,31 @@ impl Matcher {
                 matches_regex,
                 if_true,
                 if_false,
-            } => todo!(),
-        }
-        todo!()
+            } => {
+                let element = query.select(node.clone());
+                println!("count: {}", element.clone().count());
+                let mut matches = element.count() != 0;
+
+                if matches {
+                    if let Some(matches_regex) = matches_regex {
+
+                    }
+                }
+
+                if matches {
+                    return if_true.exec(node);
+                } else if let Some(if_false) = if_false {
+                    return if_false.exec(node);
+                } else {
+                    panic!("uhhm");
+                }
+            }
+        };
+    }
+
+    pub fn exec_string(&self, node: NodeRef) -> Result<String, ()> {
+        let value = self.exec(node);
+        value.downcast::<String>().map(|v| *v).map_err(|_| ())
     }
 }
 
@@ -185,7 +221,7 @@ fn make_cfg() -> Matcher {
             text_type: TextType::Own,
             clean_with_regex_1: None,
         },
-        matches_regex: "regex".to_string(),
+        matches_regex: Some("regex".to_string()),
         if_true: Box::new(Matcher::String {
             query: QueryMatcher {
                 selector: "h1.title".to_string(),
@@ -204,8 +240,14 @@ fn test_case() -> Result<(), Box<dyn Error>> {
         .from_file("tests/fragments/test.html")?;
 
     let cfg = make_cfg();
+    
+    let html = doc.select_first("html:first-of-type").expect("Unknown selector");
 
-    cfg.exec(doc.select("html:first-of-type").unwrap());
+    let str = cfg
+        .exec_string(html)
+        .expect("Not a string matcher");
+
+    println!("str: {str}");
 
     Ok(())
 }

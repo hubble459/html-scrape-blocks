@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use kuchiki::traits::{NodeIterator, ElementIterator};
+use kuchiki::traits::{ElementIterator, NodeIterator};
 
 pub trait ElementsTrait {
     fn own_text(&self) -> String;
@@ -10,12 +10,12 @@ pub trait ElementsTrait {
 
     fn attr(&self, attr: &str) -> Option<String>;
 
-    fn attrs(&self, join_str: &str, attr: &str) -> Vec<String>;
+    fn attrs(&self, attr: &str) -> Vec<String>;
 
     fn attrs_first_of(&self, attrs: &[String]) -> Vec<String>;
 }
 
-impl<T: ElementIterator> ElementsTrait for T {
+impl<T: ElementIterator + Clone> ElementsTrait for T {
     fn own_text(&self) -> String {
         self.clone()
             .map(|el| {
@@ -49,7 +49,7 @@ impl<T: ElementIterator> ElementsTrait for T {
     }
 
     fn attr(&self, attr: &str) -> Option<String> {
-        let mut cloned = self.clone();
+        let cloned = self.clone();
         for node in cloned.into_iter() {
             let attributes = node.attributes.borrow();
             let val = attributes.get(attr);
@@ -60,8 +60,8 @@ impl<T: ElementIterator> ElementsTrait for T {
         return None;
     }
 
-    fn attrs(&self, join_str: &str, attr: &str) -> Vec<String> {
-        let mut cloned = self.clone();
+    fn attrs(&self, attr: &str) -> Vec<String> {
+        let cloned = self.clone();
         let mut attrs = vec![];
 
         for node in cloned.into_iter() {
@@ -76,21 +76,20 @@ impl<T: ElementIterator> ElementsTrait for T {
     }
 
     fn attrs_first_of(&self, attrs: &[String]) -> Vec<String> {
-        let mut cloned = self.clone();
-        let mut attrs = vec![];
+        let cloned = self.clone();
+        let mut found_attrs = vec![];
 
         for node in cloned.into_iter() {
             let attributes = node.attributes.borrow();
             for attr in attrs {
-                let val = attributes.get(attr);
+                let val = attributes.get(attr.to_string());
                 if let Some(val) = val {
-                    attrs.push(val.to_string());
+                    found_attrs.push(val.to_string());
                     break;
                 }
             }
         }
 
-        return attrs;
+        return found_attrs;
     }
-
 }
