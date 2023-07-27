@@ -1,5 +1,3 @@
-use std::default;
-
 use kuchiki::{iter::Select, traits::ElementIterator};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -52,18 +50,24 @@ impl QueryMatcher {
             }
         };
 
-        if let Some(regex) = &self.clean_with_regex_1 {
-            let regex = Regex::new(regex).expect("Bad regex `clean_with_regex_1`");
-            if let Some(clean_text) = regex.find(&text) {
-                Ok(clean_text.as_str().to_string())
-            } else {
-                panic!("Regex did not match anything");
-            }
-        } else if text.is_empty() {
+        debug!("\tfound text: {text}");
+
+        if text.is_empty() {
+            debug!("\nusing default text: {text}");
+
             return self.default.clone().map_or(
                 Err(ScrapeBlockError::ElementExpected(self.selector.clone())),
                 |default| Ok(default),
             );
+        } else if let Some(regex) = &self.clean_with_regex_1 {
+            let regex = Regex::new(regex).expect("Bad regex `clean_with_regex_1`");
+            if let Some(clean_text) = regex.find(&text) {
+                let clean_text = clean_text.as_str().to_string();
+                debug!("\nclean text: {text}");
+                Ok(clean_text)
+            } else {
+                Err(ScrapeBlockError::ElementExpected(self.selector.clone()))
+            }
         } else {
             return Ok(text);
         }

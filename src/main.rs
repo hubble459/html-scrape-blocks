@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 
 use html_scrape_blocks::model::query_matcher::QueryMatcher;
-use html_scrape_blocks::model::scrape_block::Matcher;
+// use std::collections::HashMap;
+// use html_scrape_blocks::model::scrape_block::Matcher;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 fn main() {
     println!("Hello, world!");
 
-    let mut matchers = HashMap::<u32, Matcher>::new();
-    let mut testers = HashMap::<u32, Tester>::new();
-    let mut scrapers = HashMap::<u32, Scraper>::new();
+    // let mut matchers = HashMap::<u32, Matcher>::new();
+    // let mut testers = HashMap::<u32, Tester>::new();
+    // let mut scrapers = HashMap::<u32, Scraper>::new();
 
     /*
     table: matcher

@@ -1,11 +1,11 @@
 use std::{
     any::{type_name, Any},
-    fmt::{Debug, Display},
+    fmt::Debug,
 };
 
 use kuchiki::traits::ElementIterator;
 use regex::{Regex, RegexBuilder};
-use serde::{de::value, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::{query_matcher::QueryMatcher, scrape_block_error::ScrapeBlockError};
 
@@ -32,10 +32,9 @@ pub enum Matcher {
         query: QueryMatcher,
         matches_regex: String,
     },
-    Array {
+    StringArray {
         query: QueryMatcher,
-        split: Option<String>,
-        regex: Option<String>,
+        split_regex: Option<String>,
     },
     Condition {
         query: QueryMatcher,
@@ -54,7 +53,7 @@ impl Matcher {
             Matcher::URL { query } => query,
             Matcher::Date { query, .. } => query,
             Matcher::Boolean { query, .. } => query,
-            Matcher::Array { query, .. } => query,
+            Matcher::StringArray { query, .. } => query,
             Matcher::Condition { query, .. } => query,
         }
         .clone()
@@ -67,23 +66,33 @@ impl Matcher {
         let query = self.query();
         debug!("{}: {}", self.as_ref(), query.selector);
 
-        let element = query.select(node.clone());
-        debug!("\tFound {} elements", element.clone().count());
+        let elements = query.select(node.clone());
+        debug!("\tFound {} elements", elements.clone().count());
 
         return match self {
             Matcher::String { query } => {
-                let text = query.text(element)?;
-                debug!("\tfound text: {text}");
+                let text = query.text(elements)?;
                 Ok(Box::new(text))
             }
-            Matcher::URL { query } => todo!(),
-            Matcher::Integer { query } => todo!(),
-            Matcher::Double { query } => todo!(),
+            Matcher::Integer { query } => {
+                let text = query.text(elements)?;
+                Ok(Box::new(
+                    i64::from_str_radix(&text, 10)
+                        .map_err(|_e| ScrapeBlockError::NotAnInteger(text)),
+                ))
+            }
+            Matcher::Double { query } => {
+                let text = query.text(elements)?;
+                Ok(Box::new(
+                    text.parse::<f64>()
+                        .map_err(|_e| ScrapeBlockError::NotAnInteger(text)),
+                ))
+            }
             Matcher::Boolean {
                 query,
                 matches_regex,
             } => {
-                let text = query.text(element)?;
+                let text = query.text(elements)?;
                 let matches = RegexBuilder::new(&matches_regex)
                     .case_insensitive(true)
                     .build()
@@ -92,26 +101,81 @@ impl Matcher {
                 debug!("\t`{text}` matches regex {matches_regex}: {matches}");
                 Ok(Box::new(matches))
             }
+            Matcher::URL { query } => {
+                let text = query.text(elements)?;
+                Ok(Box::new(
+                    reqwest::Url::parse(&text)
+                        .map_err(|_| ScrapeBlockError::UrlParseError(text))?,
+                ))
+            }
             Matcher::Date {
                 query,
                 date_formats,
-            } => todo!(),
-            Matcher::Array {
-                query,
-                split,
-                regex,
-            } => todo!(),
+            } => {
+                let text = query.text(elements)?;
+                for date_format in date_formats {
+                    #[cfg(feature = "chrono")]
+                    {
+                        let date = chrono::NaiveDateTime::parse_from_str(&text, &date_format);
+                        match date {
+                            Ok(date) => return Ok(Box::new(date)),
+                            Err(e) => match e.kind() {
+                                chrono::format::ParseErrorKind::BadFormat => {
+                                    return Err(ScrapeBlockError::InvalidDateFormat(
+                                        date_format.to_string(),
+                                        Some(e),
+                                    ))
+                                }
+                                _ => {}
+                            },
+                        }
+                    }
+                    #[cfg(feature = "time")]
+                    {
+                        let date = time::PrimitiveDateTime::parse(
+                            &text,
+                            &time::format_description::parse(&date_format).map_err(|_e| {
+                                ScrapeBlockError::InvalidDateFormat(date_format.to_string(), None)
+                            })?,
+                        );
+                        if let Ok(date) = date {
+                            return Ok(Box::new(date));
+                        }
+                    }
+                }
+                Err(ScrapeBlockError::NotADate(text))
+            }
+            Matcher::StringArray { split_regex, .. } => {
+                let mut strings = vec![];
+                let split_regex = if let Some(split_regex) = split_regex {
+                    Some(Regex::new(&split_regex).map_err(|e| ScrapeBlockError::InvalidRegex(e))?)
+                } else {
+                    None
+                };
+
+                for element in elements {
+                    let text = element.text_contents();
+                    if let Some(regex) = &split_regex {
+                        for part in regex.split(&text) {
+                            strings.push(part.to_string());
+                        }
+                    } else {
+                        strings.push(text);
+                    }
+                }
+                Ok(Box::new(strings))
+            }
             Matcher::Condition {
                 query,
                 matches_regex,
                 if_true,
                 if_false,
             } => {
-                let mut matches = element.clone().count() != 0;
+                let mut matches = elements.clone().count() != 0;
 
                 debug!("\texists: {matches}");
                 if matches {
-                    let text = query.text(element)?;
+                    let text = query.text(elements)?;
                     if let Some(matches_regex) = matches_regex {
                         matches = RegexBuilder::new(&matches_regex)
                             .case_insensitive(true)
@@ -156,6 +220,13 @@ impl Matcher {
         self.exec_downcase(node)
     }
 
+    pub fn exec_string_array<T: ElementIterator + Clone>(
+        &self,
+        node: T,
+    ) -> Result<Vec<String>, ScrapeBlockError> {
+        self.exec_downcase(node)
+    }
+
     pub fn exec_boolean<T: ElementIterator + Clone>(
         &self,
         node: T,
@@ -177,13 +248,26 @@ impl Matcher {
         self.exec_downcase(node)
     }
 
-    pub fn exec_date<T: ElementIterator + Clone>(&self, node: T) -> Result<bool, ScrapeBlockError> {
-        // todo chrono::NaiveDate
+    #[cfg(feature = "chrono")]
+    pub fn exec_date<T: ElementIterator + Clone>(
+        &self,
+        node: T,
+    ) -> Result<chrono::NaiveDateTime, ScrapeBlockError> {
         self.exec_downcase(node)
     }
 
-    pub fn exec_url<T: ElementIterator + Clone>(&self, node: T) -> Result<bool, ScrapeBlockError> {
-        // todo reqwest::Url
+    #[cfg(feature = "time")]
+    pub fn exec_date<T: ElementIterator + Clone>(
+        &self,
+        node: T,
+    ) -> Result<time::PrimitiveDateTime, ScrapeBlockError> {
+        self.exec_downcase(node)
+    }
+
+    pub fn exec_url<T: ElementIterator + Clone>(
+        &self,
+        node: T,
+    ) -> Result<reqwest::Url, ScrapeBlockError> {
         self.exec_downcase(node)
     }
 }

@@ -35,6 +35,35 @@ fn test_string_matcher() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_string_array_matcher() -> Result<(), Box<dyn std::error::Error>> {
+    let doc = get_test_doc()?;
+
+    let matcher = Matcher::StringArray {
+        query: QueryMatcher {
+            selector: String::from("ul > li"),
+            ..Default::default()
+        },
+        split_regex: None,
+    };
+
+    let result = matcher.exec_string_array(doc.clone())?;
+    assert_eq!(result, &["One", "Two", "Three"]);
+
+    let matcher = Matcher::StringArray {
+        query: QueryMatcher {
+            selector: String::from("h1.title"),
+            ..Default::default()
+        },
+        split_regex: Some(String::from(" ")),
+    };
+
+    let result = matcher.exec_string_array(doc)?;
+    assert_eq!(result, &["Test", "Title"]);
+
+    Ok(())
+}
+
+#[test]
 fn test_default_matcher() -> Result<(), Box<dyn std::error::Error>> {
     let matcher = Matcher::String {
         query: QueryMatcher {
