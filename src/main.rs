@@ -1,5 +1,5 @@
 
-use html_scrape_blocks::model::query_matcher::QueryMatcher;
+use kuchiki_scrape_blocks::model::query_matcher::QueryMatcher;
 // use std::collections::HashMap;
 // use html_scrape_blocks::model::scrape_block::Matcher;
 

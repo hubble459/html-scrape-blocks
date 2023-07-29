@@ -411,24 +411,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "443144c8cdadd93ebf52ddb4056d257f5b52c04d3c804e657d19eb73fc33668b"
 
 [[package]]
-name = "html-scrape-blocks"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "env_logger",
- "itertools",
- "kuchiki",
- "log",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "strum",
- "thiserror",
- "time 0.3.23",
-]
-
-[[package]]
 name = "html5ever"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,6 +601,24 @@ dependencies = [
  "indexmap",
  "matches",
  "selectors",
+]
+
+[[package]]
+name = "kuchiki-scrape-blocks"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "env_logger",
+ "itertools",
+ "kuchiki",
+ "log",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror",
+ "time 0.3.23",
 ]
 
 [[package]]

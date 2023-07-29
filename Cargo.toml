@@ -1,5 +1,5 @@
 [package]
-name = "html-scrape-blocks"
+name = "kuchiki-scrape-blocks"
 version = "0.1.0"
 edition = "2021"
 

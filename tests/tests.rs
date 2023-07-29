@@ -1,4 +1,4 @@
-use html_scrape_blocks::model::{
+use kuchiki_scrape_blocks::model::{
     query_matcher::QueryMatcher, scrape_block::Matcher, scrape_block_error::ScrapeBlockError,
 };
 

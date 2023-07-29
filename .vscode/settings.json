@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "kuchiki",
         "Kuchiki"
     ],
     "rust-analyzer.cargo.features": ["chrono"]
