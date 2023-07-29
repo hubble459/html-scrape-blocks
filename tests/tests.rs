@@ -1,4 +1,6 @@
-use html_scrape_blocks::model::{query_matcher::QueryMatcher, scrape_block::Matcher, scrape_block_error::ScrapeBlockError};
+use html_scrape_blocks::model::{
+    query_matcher::QueryMatcher, scrape_block::Matcher, scrape_block_error::ScrapeBlockError,
+};
 
 #[cfg(test)]
 fn get_test_doc(
@@ -93,7 +95,33 @@ fn test_not_found_matcher() -> Result<(), Box<dyn std::error::Error>> {
     let doc = get_test_doc()?;
     let result = matcher.exec_string(doc);
 
-    assert!(matches!(result, Err(ScrapeBlockError::ElementExpected(_selector))));
+    assert!(matches!(
+        result,
+        Err(ScrapeBlockError::ElementExpected(_selector))
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn test_array() -> Result<(), Box<dyn std::error::Error>> {
+    let matcher = Matcher::Array {
+        query: QueryMatcher {
+            selector: "ul li".to_string(),
+            ..Default::default()
+        },
+        each: Box::new(Matcher::String {
+            query: QueryMatcher {
+                selector: String::from("*"),
+                ..Default::default()
+            },
+        }),
+    };
+
+    let doc = get_test_doc()?;
+    let result = matcher.exec_array::<_, String>(doc)?;
+
+    assert_eq!(result, &["One", "Two", "Three"]);
 
     Ok(())
 }

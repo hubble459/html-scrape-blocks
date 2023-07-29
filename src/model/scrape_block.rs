@@ -1,17 +1,34 @@
 use std::{
     any::{type_name, Any},
-    fmt::Debug,
+    fmt::Debug, sync::Arc,
 };
 
-use kuchiki::traits::ElementIterator;
+use kuchiki::traits::{ElementIterator, NodeIterator};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 
 use super::{query_matcher::QueryMatcher, scrape_block_error::ScrapeBlockError};
 
+fn downcast<T: 'static>(value: Result<Box<dyn Any>, ScrapeBlockError>) -> Result<T, ScrapeBlockError> {
+    match value {
+        Ok(value) => value.downcast::<T>().map_or(
+            Err(ScrapeBlockError::InvalidType {
+                expected: String::from(type_name::<T>()),
+                found: "Unknown".to_owned(),
+            }),
+            |v| Ok(*v),
+        ),
+        Err(e) => Err(e),
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, strum::AsRefStr)]
 #[serde(tag = "type")]
 pub enum Matcher {
+    Array {
+        query: QueryMatcher,
+        each: Box<Matcher>,
+    },
     String {
         query: QueryMatcher,
     },
@@ -47,6 +64,7 @@ pub enum Matcher {
 impl Matcher {
     pub fn query(&self) -> QueryMatcher {
         match self {
+            Matcher::Array { query, .. } => query,
             Matcher::String { query } => query,
             Matcher::Integer { query } => query,
             Matcher::Double { query } => query,
@@ -68,8 +86,15 @@ impl Matcher {
 
         let elements = query.select(node.clone());
         debug!("\tFound {} elements", elements.clone().count());
-
         return match self {
+            Matcher::Array { each, .. } => {
+                let mut collect = vec![];
+                for element in elements {
+                    info!("el: {}", element.name.local.as_ref());
+                    collect.push(each.exec(element.as_node().inclusive_descendants().elements()));
+                }
+                Ok(Box::new(collect))
+            }
             Matcher::String { query } => {
                 let text = query.text(elements)?;
                 Ok(Box::new(text))
@@ -196,21 +221,12 @@ impl Matcher {
         };
     }
 
-    pub fn exec_downcase<T: ElementIterator + Clone, R: Clone + 'static>(
+    pub fn exec_downcase<T: ElementIterator + Clone, R: 'static>(
         &self,
         node: T,
     ) -> Result<R, ScrapeBlockError> {
         let value = self.exec(node);
-        match value {
-            Ok(value) => value.downcast_ref::<R>().map_or(
-                Err(ScrapeBlockError::InvalidType {
-                    expected: String::from(type_name::<R>()),
-                    found: "Unknown".to_owned(),
-                }),
-                |v| Ok(v.clone()),
-            ),
-            Err(e) => Err(e),
-        }
+        downcast(value)
     }
 
     pub fn exec_string<T: ElementIterator + Clone>(
@@ -269,5 +285,13 @@ impl Matcher {
         node: T,
     ) -> Result<reqwest::Url, ScrapeBlockError> {
         self.exec_downcase(node)
+    }
+
+    pub fn exec_array<T: ElementIterator + Clone, ArrayType: 'static>(
+        &self,
+        node: T,
+    ) -> Result<Vec<ArrayType>, ScrapeBlockError> {
+        let items = self.exec_downcase::<_, Vec<Result<Box<dyn Any>, ScrapeBlockError>>>(node)?;
+        items.into_iter().map(|item| downcast(item)).collect()
     }
 }

@@ -53,7 +53,7 @@ impl QueryMatcher {
         debug!("\tfound text: {text}");
 
         if text.is_empty() {
-            debug!("\nusing default text: {text}");
+            debug!("\tusing default text: {:?}", self.default);
 
             return self.default.clone().map_or(
                 Err(ScrapeBlockError::ElementExpected(self.selector.clone())),
